@@ -1,6 +1,6 @@
 # Sistema de Expedientes Digitales: Hospital de Diagnóstico
  
-## ¿Qué hace el sistema?
+## ¿Qué hace el sistema? 
 El sistema gestiona de forma digital los expedientes de los empleados del Hospital de Diagnóstico utilizando una base de datos relacional en MySQL. Permite registrar nuevos empleados con validaciones estrictas y control de duplicados, listar los registros unificando la información de ambas tablas mediante una consulta `JOIN`, buscar registros por texto, editar información, eliminar registros de forma segura asegurando la integridad referencial (en cascada), visualizar un reporte de detalle individual para cada expediente, generar un reporte estadístico completo (resumen) con repetición y decisión, y exportar los datos filtrados a formato CSV.
  
 ---
