@@ -106,6 +106,7 @@ La ruta `/resumen` realiza un procesamiento analítico de los datos mediante un 
 ### 1. Pedro Reyes
 * **Estructura y diseño de la base de datos:** Lideró la arquitectura relacional del proyecto redactando el script SQL para la creación de la base de datos y sus dos tablas principales (`empleados` y `documentos`). Estableció la restricción de borrado en cascada (`ON DELETE CASCADE`) para garantizar la integridad referencial y prevenir registros huérfanos, incorporando también los datos iniciales de prueba.
 * **Aportación personalizada:** Desarrolló el sistema de filtrado avanzado que permite segmentar el listado de expedientes de forma dinámica según el rol profesional (médicos, personal de enfermería o área administrativa).
+  
 **Mejora individual:** Desarrolló una funcionalidad para segmentar y filtrar el listado de empleados de forma dinámica según su categoría profesional (médicos, personal de enfermería o administrativos).
   
 
@@ -113,19 +114,23 @@ La ruta `/resumen` realiza un procesamiento analítico de los datos mediante un 
 Implementé la conexión entre Flask y MySQL mediante la función `conectar()` y agregué las dependencias necesarias en `requirements.txt`.
 Desarrollé la ruta `/empleados` utilizando `LEFT JOIN` para mostrar la información de los empleados junto con sus documentos.
 Actualicé `empleados.html` para mostrar los datos de ambas tablas.
+
 **Mejora individual:** Incorporé una búsqueda por nombre o número de DUI desde el listado de empleados. Si el campo está vacío, se muestran todos los empleados.
 
 ### 3. Pedro Valle
 * **Gestión de ingresos y seguridad de formularios:** Habilitó el flujo de registro de nuevos colaboradores mediante la creación de rutas con soporte para peticiones HTTP y el diseño de la plantilla de captura. Aseguró la integridad de los datos empleando consultas parametrizadas para neutralizar cualquier riesgo de inyección SQL.
 * **Aportación personalizada:** Programó la validación estricta en el servidor para bloquear el ingreso de números de DUI duplicados antes de que la información sea almacenada en la base de datos.
+
 **Mejora individual:** Programó una validación rigurosa en el servidor para comprobar que el número de DUI ingresado no exista previamente en la base de datos, evitando registros repetidos.
   
 ### 4. Daniel Brizuela
 * **Mantenimiento y operaciones críticas:** Diseñó los mecanismos seguros para modificar y dar de baja registros del sistema. Garantizó que las sentencias de actualización y eliminación incluyeran de forma obligatoria los filtros correspondientes, complementando la interfaz con alertas de confirmación en JavaScript para evitar borrados accidentales.
 * **Aportación personalizada:** Construyó la vista de expediente detallado, ofreciendo una tarjeta informativa con la información ampliada e individual de cada empleado.
+
 **Mejora individual:** Creó la ruta y la interfaz dedicada (`/empleados/detalle/<int:id>`) para consultar una tarjeta informativa completa y ampliada con la información específica de cada expediente.
   
 ### 5. Rodrigo Burgos
 * **Análisis estadístico e identidad visual:** Unificó la línea gráfica de la aplicación a través de una hoja de estilos centralizada y programó la ruta de reportes analíticos utilizando estructuras de control y bucles para calcular porcentajes de avance y alertas de estado. Además, coordinó la redacción de la documentación oficial del proyecto.
 * **Aportación personalizada:** Añadió la funcionalidad de exportación de datos a formato CSV con soporte de codificación UTF-8 (BOM), facilitando su apertura directa en herramientas de hoja de cálculo como Microsoft Excel.
+
 **Mejora individual:** Incorporó la funcionalidad para descargar los expedientes filtrados en formato CSV, asegurando la codificación UTF-8 con BOM para una compatibilidad perfecta con Microsoft Excel.
