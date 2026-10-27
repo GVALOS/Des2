@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Resumen de Expedientes</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Resumen de Expedientes</h1>
+
+        <div class="nav">
+            <a href="/empleados" class="btn secundario">Regresar al listado</a>
+            <a href="/empleados/exportar" class="btn exportar">Exportar a CSV</a>
+        </div>
+
+        <div class="alerta {{ nivel }}">{{ alerta }}</div>
+
+        <div class="cards">
+            <div class="card">
+                <p class="numero">{{ total }}</p>
+                <p class="etiqueta">Empleados registrados</p>
+            </div>
+            <div class="card validado">
+                <p class="numero">{{ completos }}</p>
+                <p class="etiqueta">Expedientes completos</p>
+                <p class="porcentaje">{{ pct_completos }}%</p>
+            </div>
+            <div class="card pendiente">
+                <p class="numero">{{ incompletos }}</p>
+                <p class="etiqueta">Expedientes incompletos</p>
+                <p class="porcentaje">{{ pct_incompletos }}%</p>
+            </div>
+        </div>
+
+        <h2>Avance de validación</h2>
+        <progress class="barra" value="{{ pct_completos }}" max="100">{{ pct_completos }}%</progress>
+        <p>{{ completos }} de {{ total }} expedientes tienen el DUI validado.</p>
+
+        <h2>Detalle por estado del DUI</h2>
+        <div class="cards">
+            <div class="card validado">
+                <p class="numero">{{ validados }}</p>
+                <p class="etiqueta">Validado</p>
+                <p class="porcentaje">{{ pct_validados }}%</p>
+            </div>
+            <div class="card pendiente">
+                <p class="numero">{{ pendientes }}</p>
+                <p class="etiqueta">Pendiente</p>
+                <p class="porcentaje">{{ pct_pendientes }}%</p>
+            </div>
+            <div class="card rechazado">
+                <p class="numero">{{ rechazados }}</p>
+                <p class="etiqueta">Rechazado</p>
+                <p class="porcentaje">{{ pct_rechazados }}%</p>
+            </div>
+            <div class="card sin-registro">
+                <p class="numero">{{ sin_registro }}</p>
+                <p class="etiqueta">Sin documento</p>
+                <p class="porcentaje">{{ pct_sin_registro }}%</p>
+            </div>
+        </div>
+
+        <h2>Empleados por perfil</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Perfil</th>
+                    <th>Cantidad</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for perfil, cantidad in por_perfil.items() %}
+                <tr>
+                    <td>{{ perfil | capitalize }}</td>
+                    <td>{{ cantidad }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="2" style="text-align: center;">Sin datos.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <h2>Expedientes por revisar</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Perfil</th>
+                    <th>Estado DUI</th>
+                    <th>Observaciones</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in requieren_atencion %}
+                <tr>
+                    <td>{{ r.id }}</td>
+                    <td>{{ r.nombre }}</td>
+                    <td>{{ r.perfil | capitalize }}</td>
+                    <td>
+                        {% if r.estado_dui %}
+                        <span class="badge {{ r.estado_dui }}">{{ r.estado_dui | capitalize }}</span>
+                        {% else %}
+                        <span class="badge sin-registro">Sin documento</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ r.observaciones or '-' }}</td>
+                    <td><a href="/empleados/editar/{{ r.id }}">Editar</a></td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center;">No hay expedientes por revisar.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
