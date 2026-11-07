@@ -1,11 +1,23 @@
 import csv
 import io
 from datetime import datetime
+from pathlib import Path
 
 import mysql.connector
 from flask import Flask, Response, render_template, request, redirect, url_for
+from werkzeug.exceptions import RequestEntityTooLarge
 
 app = Flask(__name__)
+# TAREA 3 - INT Av
+# Configuración de subida de archivos
+
+TAMANO_MAXIMO_ARCHIVO = 512 * 1024
+
+app.config["MAX_CONTENT_LENGTH"] = 600 * 1024
+
+EXTENSIONES_PERMITIDAS = {".pdf", ".doc", ".docx"}
+
+TIPOS_DOCUMENTO = {"dui", "antecedentes", "carnet"}
 
 # Conexión centralizada a MySQL (XAMPP - Puerto 3306)
 def conectar():
@@ -289,6 +301,106 @@ def exportar_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=" + nombre_archivo},
     )
+# TAREA 3 - Av
+# Backend de subida, validación y gestión de versiones
 
+@app.errorhandler(RequestEntityTooLarge)
+def solicitud_demasiado_grande(error):
+    return jsonify({"error": "La solicitud supera el tamaño máximo permitido."}), 413
+
+@app.route("/empleados/<int:empleado_id>/archivos/subir", methods=["POST"])
+def subir_archivo(empleado_id):
+    # PASO 1: Recibir archivo
+    archivo = request.files.get("archivo")
+    if archivo is None or not archivo.filename or not archivo.filename.strip():
+        return jsonify({"error": "Seleccione un archivo PDF o Word."}), 400
+
+    nombre_original = archivo.filename.strip()
+    if len(nombre_original) > 255 or "/" in nombre_original or "\\" in nombre_original:
+        return jsonify({"error": "El nombre del archivo no es válido."}), 400
+
+    # PASO 2: Validar extensión
+    extension = Path(nombre_original).suffix.lower()
+    if extension not in EXTENSIONES_PERMITIDAS:
+        return jsonify({"error": "Solo se permiten archivos .pdf, .doc y .docx."}), 400
+
+    # PASO 3: Validar tamaño y contenido
+    contenido = archivo.stream.read(TAMANO_MAXIMO_ARCHIVO + 1)
+    if not contenido:
+        return jsonify({"error": "El archivo está vacío."}), 400
+    if len(contenido) > TAMANO_MAXIMO_ARCHIVO:
+        return jsonify({"error": "El archivo supera el máximo de 512 KB."}), 413
+
+    # PASO 4: Validar tipo de documento
+    tipo_documento = request.form.get("tipo_documento", "").strip().lower()
+    if tipo_documento not in TIPOS_DOCUMENTO:
+        return jsonify({"error": "Tipo de documento no permitido."}), 400
+
+    # PASO 5: Validar fecha de vencimiento
+    fecha_texto = request.form.get("fecha_vencimiento", "").strip()
+    fecha_vencimiento = None
+    if tipo_documento == "dui" and not fecha_texto:
+        return jsonify({"error": "La fecha de vencimiento es obligatoria para el DUI."}), 400
+    if fecha_texto:
+        try:
+            fecha_vencimiento = date.fromisoformat(fecha_texto)
+        except ValueError:
+            return jsonify({"error": "La fecha debe tener formato AAAA-MM-DD."}), 400
+
+    # PASO 6: Conectar a MySQL
+    conexion = None
+    cursor = None
+    try:
+        conexion = conectar()
+        cursor = conexion.cursor()
+
+        # Verificar existencia del empleado
+        cursor.execute(
+            "SELECT id FROM empleados WHERE id = %s FOR UPDATE",
+            (empleado_id,)
+        )
+        if cursor.fetchone() is None:
+            conexion.rollback()
+            return jsonify({"error": "El empleado no existe."}), 404
+
+        # PASO 7: Calcular nueva versión
+        cursor.execute(
+            """SELECT COALESCE(MAX(version), 0) FROM archivos
+               WHERE empleado_id = %s AND tipo_documento = %s""",
+            (empleado_id, tipo_documento)
+        )
+        nueva_version = cursor.fetchone()[0] + 1
+
+        # PASO 8: Guardar nueva versión
+        cursor.execute(
+            """INSERT INTO archivos
+               (empleado_id, tipo_documento, nombre_original, contenido, version, fecha_vencimiento)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (empleado_id, tipo_documento, nombre_original, contenido, nueva_version, fecha_vencimiento)
+        )
+        archivo_id = cursor.lastrowid
+        conexion.commit()
+
+        # PASO 9: Confirmar resultado
+        return jsonify({
+            "mensaje": "Archivo guardado correctamente.",
+            "archivo_id": archivo_id,
+            "empleado_id": empleado_id,
+            "tipo_documento": tipo_documento,
+            "version": nueva_version
+        }), 201
+
+    except mysql.connector.Error:
+        if conexion is not None:
+            conexion.rollback()
+        app.logger.exception("Error al guardar el archivo en MySQL")
+        return jsonify({"error": "No se pudo guardar el archivo."}), 500
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conexion is not None and conexion.is_connected():
+            conexion.close()
+            
 if __name__ == "__main__":
     app.run(debug=True)
