@@ -61,6 +61,23 @@
             </div>
         </div>
 
+        <!-- NUEVA SECCIÓN: Estado Global de Archivos y Versiones -->
+        <h2>Estado de Archivos y Versiones (Global)</h2>
+        <div class="cards">
+            <div class="card validado">
+                <p class="numero">{{ conteo_archivos_estado.Vigente }}</p>
+                <p class="etiqueta">Vigentes</p>
+            </div>
+            <div class="card rechazado">
+                <p class="numero">{{ conteo_archivos_estado.Vencido }}</p>
+                <p class="etiqueta">Vencidos</p>
+            </div>
+            <div class="card sin-registro">
+                <p class="numero">{{ conteo_archivos_estado.Obsoleto }}</p>
+                <p class="etiqueta">Obsoletos</p>
+            </div>
+        </div>
+
         <h2>Empleados por perfil</h2>
         <table>
             <thead>
@@ -109,7 +126,10 @@
                         {% endif %}
                     </td>
                     <td>{{ r.observaciones or '-' }}</td>
-                    <td><a href="/empleados/editar/{{ r.id }}">Editar</a></td>
+                    <td>
+                        <a href="/empleados/editar/{{ r.id }}">Editar</a> | 
+                        <a href="{{ url_for('listar_archivos_empleado', empleado_id=r.id) }}">Archivos</a>
+                    </td>
                 </tr>
                 {% else %}
                 <tr>

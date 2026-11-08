@@ -20,6 +20,7 @@
 
         <div style="margin-top: 20px;">
             <a href="/empleados/editar/{{ empleado.id }}" class="btn" style="background: #2196F3;">Editar Registro</a>
+            <a href="{{ url_for('listar_archivos_empleado', empleado_id=empleado.id) }}" class="btn" style="margin-left: 10px; background: #4CAF50;">Gestionar Archivos</a>
             <a href="/empleados" class="btn" style="margin-left: 10px; background: #607D8B;">Regresar al Listado</a>
         </div>
     </div>

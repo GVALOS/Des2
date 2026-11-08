@@ -45,8 +45,9 @@
                     <td>
                         <a href="/empleados/detalle/{{ empleado.id }}">Detalle</a> |
                         <a href="/empleados/editar/{{ empleado.id }}">Editar</a> |
+                        <a href="{{ url_for('listar_archivos_empleado', empleado_id=empleado.id) }}">Archivos</a> |
                         <form method="POST" action="/empleados/eliminar/{{ empleado.id }}" style="display:inline;" onsubmit="return confirm('¿Está seguro de eliminar este empleado y sus expedientes asociados?');">
-                            <button type="submit" style="background: #f44336; padding: 4px 8px; font-size: 12px;">Eliminar</button>
+                            <button type="submit" style="background: #f44336; padding: 4px 8px; font-size: 12px; color: white; border: none; cursor: pointer;">Eliminar</button>
                         </form>
                     </td>
                 </tr>
