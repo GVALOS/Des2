@@ -1,23 +1,20 @@
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 
 import mysql.connector
-from flask import Flask, Response, render_template, request, redirect, url_for
+from flask import Flask, Response, render_template, request, redirect, url_for, jsonify, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
 
 app = Flask(__name__)
-# TAREA 3 - INT Av
+
 # Configuración de subida de archivos
-
 TAMANO_MAXIMO_ARCHIVO = 512 * 1024
-
 app.config["MAX_CONTENT_LENGTH"] = 600 * 1024
 
 EXTENSIONES_PERMITIDAS = {".pdf", ".doc", ".docx"}
-
-TIPOS_DOCUMENTO = {"dui", "antecedentes", "carnet"}
+TIPOS_DOCUMENTO = {"dui", "antecedentes", "carnet_junta"}
 
 # Conexión centralizada a MySQL (XAMPP - Puerto 3306)
 def conectar():
@@ -157,7 +154,6 @@ def eliminar_empleado(id):
         conexion.close()
     return redirect(url_for("listar_empleados"))
 
-# MEJORA INDIVIDUAL
 @app.route("/empleados/detalle/<int:id>")
 def detalle_empleado(id):
     conexion = conectar()
@@ -177,7 +173,14 @@ def detalle_empleado(id):
         
     return render_template("detalle.html", empleado=empleado)
 
-# RESUMEN ESTADISTICO (Rodrigo Burgos)
+def calcular_estado_archivo(version, max_version, fecha_vencimiento):
+    if version < max_version:
+        return "Obsoleto"
+    elif fecha_vencimiento and fecha_vencimiento < date.today():
+        return "Vencido"
+    else:
+        return "Vigente"
+
 @app.route("/resumen")
 def resumen():
     conexion = conectar()
@@ -190,6 +193,12 @@ def resumen():
             ORDER BY e.id
         """)
         registros = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT empleado_id, tipo_documento, version, fecha_vencimiento 
+            FROM archivos
+        """)
+        todos_archivos = cursor.fetchall()
     finally:
         cursor.close()
         conexion.close()
@@ -202,7 +211,6 @@ def resumen():
     por_perfil = {}
     requieren_atencion = []
 
-    # Un solo recorrido: clasifica cada expediente y va sumando los contadores
     for r in registros:
         if r["estado_dui"] == "validado":
             validados += 1
@@ -219,7 +227,17 @@ def resumen():
         perfil = r["perfil"]
         por_perfil[perfil] = por_perfil.get(perfil, 0) + 1
 
-    # Completo = DUI validado. Todo lo demas cuenta como incompleto.
+    max_versiones_map = {}
+    for a in todos_archivos:
+        key = (a["empleado_id"], a["tipo_documento"])
+        max_versiones_map[key] = max(max_versiones_map.get(key, 0), a["version"])
+
+    conteo_archivos_estado = {"Vigente": 0, "Vencido": 0, "Obsoleto": 0}
+    for a in todos_archivos:
+        max_v = max_versiones_map.get((a["empleado_id"], a["tipo_documento"]), 1)
+        estado_calc = calcular_estado_archivo(a["version"], max_v, a["fecha_vencimiento"])
+        conteo_archivos_estado[estado_calc] += 1
+
     completos = validados
     incompletos = total - completos
 
@@ -263,9 +281,9 @@ def resumen():
         alerta=alerta,
         por_perfil=por_perfil,
         requieren_atencion=requieren_atencion,
+        conteo_archivos_estado=conteo_archivos_estado
     )
 
-# MEJORA INDIVIDUAL (Rodrigo Burgos): exportar el listado a CSV
 @app.route("/empleados/exportar")
 def exportar_csv():
     busqueda = request.args.get("buscar", "").strip()
@@ -295,14 +313,11 @@ def exportar_csv():
         ])
 
     nombre_archivo = "empleados_" + datetime.now().strftime("%Y%m%d_%H%M") + ".csv"
-    # El BOM al inicio hace que Excel abra bien las tildes
     return Response(
         "\ufeff" + salida.getvalue(),
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=" + nombre_archivo},
     )
-# TAREA 3 - Av
-# Backend de subida, validación y gestión de versiones
 
 @app.errorhandler(RequestEntityTooLarge)
 def solicitud_demasiado_grande(error):
@@ -310,60 +325,52 @@ def solicitud_demasiado_grande(error):
 
 @app.route("/empleados/<int:empleado_id>/archivos/subir", methods=["POST"])
 def subir_archivo(empleado_id):
-    # PASO 1: Recibir archivo
     archivo = request.files.get("archivo")
     if archivo is None or not archivo.filename or not archivo.filename.strip():
-        return jsonify({"error": "Seleccione un archivo PDF o Word."}), 400
+        return "Seleccione un archivo PDF o Word válido.", 400
 
     nombre_original = archivo.filename.strip()
     if len(nombre_original) > 255 or "/" in nombre_original or "\\" in nombre_original:
-        return jsonify({"error": "El nombre del archivo no es válido."}), 400
+        return "El nombre del archivo no es válido.", 400
 
-    # PASO 2: Validar extensión
     extension = Path(nombre_original).suffix.lower()
     if extension not in EXTENSIONES_PERMITIDAS:
-        return jsonify({"error": "Solo se permiten archivos .pdf, .doc y .docx."}), 400
+        return "Solo se permiten archivos .pdf, .doc y .docx.", 400
 
-    # PASO 3: Validar tamaño y contenido
     contenido = archivo.stream.read(TAMANO_MAXIMO_ARCHIVO + 1)
     if not contenido:
-        return jsonify({"error": "El archivo está vacío."}), 400
+        return "El archivo está vacío.", 400
     if len(contenido) > TAMANO_MAXIMO_ARCHIVO:
-        return jsonify({"error": "El archivo supera el máximo de 512 KB."}), 413
+        return "El archivo supera el máximo de 512 KB.", 413
 
-    # PASO 4: Validar tipo de documento
     tipo_documento = request.form.get("tipo_documento", "").strip().lower()
     if tipo_documento not in TIPOS_DOCUMENTO:
-        return jsonify({"error": "Tipo de documento no permitido."}), 400
+        return "Tipo de documento no permitido.", 400
 
-    # PASO 5: Validar fecha de vencimiento
     fecha_texto = request.form.get("fecha_vencimiento", "").strip()
     fecha_vencimiento = None
     if tipo_documento == "dui" and not fecha_texto:
-        return jsonify({"error": "La fecha de vencimiento es obligatoria para el DUI."}), 400
+        return "La fecha de vencimiento es obligatoria para el DUI.", 400
     if fecha_texto:
         try:
             fecha_vencimiento = date.fromisoformat(fecha_texto)
         except ValueError:
-            return jsonify({"error": "La fecha debe tener formato AAAA-MM-DD."}), 400
+            return "La fecha debe tener formato AAAA-MM-DD.", 400
 
-    # PASO 6: Conectar a MySQL
     conexion = None
     cursor = None
     try:
         conexion = conectar()
         cursor = conexion.cursor()
 
-        # Verificar existencia del empleado
         cursor.execute(
             "SELECT id FROM empleados WHERE id = %s FOR UPDATE",
             (empleado_id,)
         )
         if cursor.fetchone() is None:
             conexion.rollback()
-            return jsonify({"error": "El empleado no existe."}), 404
+            return "El empleado no existe.", 404
 
-        # PASO 7: Calcular nueva versión
         cursor.execute(
             """SELECT COALESCE(MAX(version), 0) FROM archivos
                WHERE empleado_id = %s AND tipo_documento = %s""",
@@ -371,36 +378,125 @@ def subir_archivo(empleado_id):
         )
         nueva_version = cursor.fetchone()[0] + 1
 
-        # PASO 8: Guardar nueva versión
         cursor.execute(
             """INSERT INTO archivos
                (empleado_id, tipo_documento, nombre_original, contenido, version, fecha_vencimiento)
                VALUES (%s, %s, %s, %s, %s, %s)""",
             (empleado_id, tipo_documento, nombre_original, contenido, nueva_version, fecha_vencimiento)
         )
-        archivo_id = cursor.lastrowid
+
+        # Actualizar automáticamente el estado en la tabla 'documentos' a 'validado'
+        cursor.execute("SELECT id FROM documentos WHERE empleado_id = %s", (empleado_id,))
+        doc_existe = cursor.fetchone()
+
+        if doc_existe:
+            if tipo_documento == "dui":
+                cursor.execute("UPDATE documentos SET estado_dui = 'validado' WHERE empleado_id = %s", (empleado_id,))
+            elif tipo_documento == "antecedentes":
+                cursor.execute("UPDATE documentos SET estado_antecedentes = 'validado' WHERE empleado_id = %s", (empleado_id,))
+            elif tipo_documento == "carnet_junta":
+                cursor.execute("UPDATE documentos SET estado_carnet = 'validado' WHERE empleado_id = %s", (empleado_id,))
+        else:
+            est_dui = 'validado' if tipo_documento == 'dui' else 'pendiente'
+            est_ant = 'validado' if tipo_documento == 'antecedentes' else 'pendiente'
+            est_car = 'validado' if tipo_documento == 'carnet_junta' else 'pendiente'
+            cursor.execute("""
+                INSERT INTO documentos (empleado_id, estado_dui, estado_antecedentes, estado_carnet)
+                VALUES (%s, %s, %s, %s)
+            """, (empleado_id, est_dui, est_ant, est_car))
+
         conexion.commit()
 
-        # PASO 9: Confirmar resultado
-        return jsonify({
-            "mensaje": "Archivo guardado correctamente.",
-            "archivo_id": archivo_id,
-            "empleado_id": empleado_id,
-            "tipo_documento": tipo_documento,
-            "version": nueva_version
-        }), 201
+        return redirect(url_for('listar_archivos_empleado', empleado_id=empleado_id))
 
     except mysql.connector.Error:
         if conexion is not None:
             conexion.rollback()
-        app.logger.exception("Error al guardar el archivo en MySQL")
-        return jsonify({"error": "No se pudo guardar el archivo."}), 500
+            app.logger.exception("Error al guardar el archivo en MySQL")
+        return "No se pudo guardar el archivo debido a un error en la base de datos.", 500
 
     finally:
         if cursor is not None:
             cursor.close()
         if conexion is not None and conexion.is_connected():
             conexion.close()
-            
+
+@app.route("/empleados/<int:empleado_id>/archivos")
+def listar_archivos_empleado(empleado_id):
+    conexion = conectar()
+    cursor = conexion.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id, nombre, dui FROM empleados WHERE id = %s", (empleado_id,))
+        empleado = cursor.fetchone()
+        if not empleado:
+            return "Empleado no encontrado", 404
+
+        cursor.execute("""
+            SELECT estado_dui, estado_antecedentes, estado_carnet, observaciones 
+            FROM documentos WHERE empleado_id = %s
+        """, (empleado_id,))
+        documentos_info = cursor.fetchone() or {
+            "estado_dui": "pendiente", 
+            "estado_antecedentes": "pendiente", 
+            "estado_carnet": "pendiente", 
+            "observaciones": ""
+        }
+
+        cursor.execute("""
+            SELECT id, empleado_id, tipo_documento, nombre_original, version, fecha_vencimiento, fecha_subida
+            FROM archivos
+            WHERE empleado_id = %s
+            ORDER BY tipo_documento, version DESC
+        """, (empleado_id,))
+        archivos = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT tipo_documento, MAX(version) as max_v
+            FROM archivos
+            WHERE empleado_id = %s
+            GROUP BY tipo_documento
+        """, (empleado_id,))
+        max_versiones = {row["tipo_documento"]: row["max_v"] for row in cursor.fetchall()}
+
+        for arch in archivos:
+            max_v = max_versiones.get(arch["tipo_documento"], 1)
+            arch["estado_calculado"] = calcular_estado_archivo(
+                arch["version"], max_v, arch["fecha_vencimiento"]
+            )
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+    return render_template("archivos_empleado.html", empleado=empleado, archivos=archivos, documentos_info=documentos_info)
+
+@app.route("/archivos/descargar/<int:archivo_id>")
+def descargar_archivo(archivo_id):
+    conexion = conectar()
+    cursor = conexion.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT nombre_original, contenido 
+            FROM archivos 
+            WHERE id = %s
+        """, (archivo_id,))
+        archivo = cursor.fetchone()
+
+        if not archivo or not archivo["contenido"]:
+            return "Archivo no encontrado", 404
+
+        nombre_original = archivo["nombre_original"]
+        contenido_binario = archivo["contenido"]
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+    return send_file(
+        io.BytesIO(contenido_binario),
+        as_attachment=True,
+        download_name=nombre_original
+    )
+
 if __name__ == "__main__":
     app.run(debug=True)
