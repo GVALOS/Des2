@@ -75,7 +75,7 @@ Almacena archivos PDF y Word en MySQL, conservando sus versiones anteriores.
 
 ---
 
-## Backend de Subida de Archivos (Integrante 2)
+## Backend de Subida de Archivos
 
 Se implementó en `app.py` la ruta `POST /empleados/<int:empleado_id>/archivos/subir`, utilizando `request.files` para recibir archivos PDF y Word.
 
