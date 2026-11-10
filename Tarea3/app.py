@@ -4,14 +4,12 @@ from datetime import datetime, date
 from pathlib import Path
 
 import mysql.connector
-from flask import Flask, Response, render_template, request, redirect, url_for, jsonify, send_file
-from werkzeug.exceptions import RequestEntityTooLarge
+from flask import Flask, Response, render_template, request, redirect, url_for, send_file
 
 app = Flask(__name__)
 
-# Configuración de subida de archivos
-TAMANO_MAXIMO_ARCHIVO = 512 * 1024
-app.config["MAX_CONTENT_LENGTH"] = 600 * 1024
+# Configuración de límites y restricciones de subida
+TAMANO_MAXIMO_ARCHIVO = 512 * 1024  # 512 KB
 
 EXTENSIONES_PERMITIDAS = {".pdf", ".doc", ".docx"}
 TIPOS_DOCUMENTO = {"dui", "antecedentes", "carnet_junta"}
@@ -25,6 +23,66 @@ def conectar():
         password="",
         database="hospital"
     )
+
+# Función auxiliar para mostrar errores de subida con un botón de regreso amigable
+def responder_error_subida(empleado_id, mensaje_error, codigo_estado=400):
+    html_error = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <title>Error de Subida</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f8f9fa;
+                margin: 0;
+                padding: 40px;
+            }}
+            .container-error {{
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 30px;
+                background-color: #ffffff;
+                border-left: 5px solid #dc3545;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                border-radius: 6px;
+            }}
+            h2 {{
+                color: #dc3545;
+                margin-top: 0;
+            }}
+            p {{
+                color: #333333;
+                font-size: 16px;
+            }}
+            .btn-regresar {{
+                display: inline-block;
+                margin-top: 20px;
+                padding: 10px 20px;
+                background-color: #0d6efd;
+                color: #ffffff;
+                text-decoration: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }}
+            .btn-regresar:hover {{
+                background-color: #0b5ed7;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container-error">
+            <h2>Error al procesar el archivo</h2>
+            <p>{mensaje_error}</p>
+            <a href="{url_for('listar_archivos_empleado', empleado_id=empleado_id)}" class="btn-regresar">
+                &larr; Volver a la lista de archivos
+            </a>
+        </div>
+    </body>
+    </html>
+    """
+    return Response(html_error, status=codigo_estado, mimetype="text/html")
 
 @app.route("/empleados")
 def listar_empleados():
@@ -319,43 +377,39 @@ def exportar_csv():
         headers={"Content-Disposition": "attachment; filename=" + nombre_archivo},
     )
 
-@app.errorhandler(RequestEntityTooLarge)
-def solicitud_demasiado_grande(error):
-    return jsonify({"error": "La solicitud supera el tamaño máximo permitido."}), 413
-
 @app.route("/empleados/<int:empleado_id>/archivos/subir", methods=["POST"])
 def subir_archivo(empleado_id):
     archivo = request.files.get("archivo")
     if archivo is None or not archivo.filename or not archivo.filename.strip():
-        return "Seleccione un archivo PDF o Word válido.", 400
+        return responder_error_subida(empleado_id, "Seleccione un archivo PDF o Word válido.", 400)
 
     nombre_original = archivo.filename.strip()
     if len(nombre_original) > 255 or "/" in nombre_original or "\\" in nombre_original:
-        return "El nombre del archivo no es válido.", 400
+        return responder_error_subida(empleado_id, "El nombre del archivo no es válido.", 400)
 
     extension = Path(nombre_original).suffix.lower()
     if extension not in EXTENSIONES_PERMITIDAS:
-        return "Solo se permiten archivos .pdf, .doc y .docx.", 400
+        return responder_error_subida(empleado_id, "Solo se permiten archivos .pdf, .doc y .docx.", 400)
 
     contenido = archivo.stream.read(TAMANO_MAXIMO_ARCHIVO + 1)
     if not contenido:
-        return "El archivo está vacío.", 400
+        return responder_error_subida(empleado_id, "El archivo está vacío.", 400)
     if len(contenido) > TAMANO_MAXIMO_ARCHIVO:
-        return "El archivo supera el máximo de 512 KB.", 413
+        return responder_error_subida(empleado_id, "El archivo supera el tamaño máximo permitido de 512 KB.", 413)
 
     tipo_documento = request.form.get("tipo_documento", "").strip().lower()
     if tipo_documento not in TIPOS_DOCUMENTO:
-        return "Tipo de documento no permitido.", 400
+        return responder_error_subida(empleado_id, "Tipo de documento no permitido.", 400)
 
     fecha_texto = request.form.get("fecha_vencimiento", "").strip()
     fecha_vencimiento = None
     if tipo_documento == "dui" and not fecha_texto:
-        return "La fecha de vencimiento es obligatoria para el DUI.", 400
+        return responder_error_subida(empleado_id, "La fecha de vencimiento es obligatoria para el DUI.", 400)
     if fecha_texto:
         try:
             fecha_vencimiento = date.fromisoformat(fecha_texto)
         except ValueError:
-            return "La fecha debe tener formato AAAA-MM-DD.", 400
+            return responder_error_subida(empleado_id, "La fecha debe tener formato AAAA-MM-DD.", 400)
 
     conexion = None
     cursor = None
@@ -369,7 +423,7 @@ def subir_archivo(empleado_id):
         )
         if cursor.fetchone() is None:
             conexion.rollback()
-            return "El empleado no existe.", 404
+            return responder_error_subida(empleado_id, "El empleado no existe.", 404)
 
         cursor.execute(
             """SELECT COALESCE(MAX(version), 0) FROM archivos
@@ -385,7 +439,6 @@ def subir_archivo(empleado_id):
             (empleado_id, tipo_documento, nombre_original, contenido, nueva_version, fecha_vencimiento)
         )
 
-        # Actualizar automáticamente el estado en la tabla 'documentos' a 'validado'
         cursor.execute("SELECT id FROM documentos WHERE empleado_id = %s", (empleado_id,))
         doc_existe = cursor.fetchone()
 
@@ -413,7 +466,7 @@ def subir_archivo(empleado_id):
         if conexion is not None:
             conexion.rollback()
             app.logger.exception("Error al guardar el archivo en MySQL")
-        return "No se pudo guardar el archivo debido a un error en la base de datos.", 500
+        return responder_error_subida(empleado_id, "No se pudo guardar el archivo debido a un error en la base de datos.", 500)
 
     finally:
         if cursor is not None:
