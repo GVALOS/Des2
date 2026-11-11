@@ -113,3 +113,7 @@ También devuelve mensajes de error HTTP:
 - `500`: error al almacenar el archivo en MySQL.
 
 Estas validaciones permiten evitar el almacenamiento de archivos inválidos y revertir operaciones fallidas.
+## Video de pruebas – Tarea 3
+
+Enlace al video de demostración:
+[https://www.youtube.com/watch?v=TU_VIDEO](https://youtu.be/AfTmI7ckyjM?si=lswOZbpT8DjsGn3T)
