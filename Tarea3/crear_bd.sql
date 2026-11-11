@@ -33,7 +33,7 @@ CREATE TABLE documentos (
 CREATE TABLE archivos (
     id                INT AUTO_INCREMENT PRIMARY KEY,
     empleado_id       INT NOT NULL,
-    tipo_documento    ENUM('dui', 'antecedentes', 'carnet') NOT NULL,
+    tipo_documento    ENUM('dui', 'antecedentes', 'carnet_junta') NOT NULL,
     nombre_original   VARCHAR(255) NOT NULL,
     contenido         LONGBLOB NOT NULL,
     version           INT UNSIGNED NOT NULL,
