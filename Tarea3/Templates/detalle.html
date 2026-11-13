@@ -14,8 +14,16 @@
             <p><strong>Nombre Completo:</strong> {{ empleado.nombre }}</p>
             <p><strong>Número de DUI:</strong> {{ empleado.dui }}</p>
             <p><strong>Perfil Laboral:</strong> {{ empleado.perfil | capitalize }}</p>
-            <p><strong>Estado del Documento (DUI):</strong> <span class="badge {{ empleado.estado_dui }}">{{ empleado.estado_dui | capitalize }}</span></p>
+            <p><strong>Documentos Entregados:</strong> {{ subidos | length }}</p>
             <p><strong>Observaciones:</strong> {{ empleado.observaciones or 'Sin observaciones registradas.' }}</p>
+            {% if faltantes %}
+                <p><strong>Documentos Obligatorios Pendientes:</strong></p>
+                <ul>
+                    {% for f in faltantes %}
+                        <li>{{ f }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
         </div>
 
         <div style="margin-top: 20px;">

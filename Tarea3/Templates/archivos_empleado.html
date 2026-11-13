@@ -4,6 +4,31 @@
     <meta charset="UTF-8">
     <title>Archivos de {{ empleado.nombre }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .drop-zone {
+            border: 2px dashed #0056b3;
+            border-radius: 4px;
+            padding: 15px;
+            text-align: center;
+            background: #fff;
+            cursor: pointer;
+            color: #555;
+            font-size: 13px;
+        }
+        .drop-zone.dragover {
+            background: #e3f2fd;
+            border-color: #0b5ed7;
+        }
+        .drop-zone.cargado {
+            border-color: #4CAF50;
+            background: #e8f5e9;
+            color: #2e7d32;
+            font-weight: bold;
+        }
+        .drop-zone input[type="file"] {
+            display: none;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -14,68 +39,55 @@
             <a href="/empleados" class="btn secundario">Regresar al listado</a>
         </div>
 
-        <!-- Estado de Entrega de Requisitos -->
+        <!-- Estado de Entrega de Requisitos (14 Documentos ordenados sin la etiqueta Opcional) -->
         <div style="border: 1px solid #ccc; padding: 20px; border-radius: 6px; margin-top: 20px; background: #fafafa;">
             <h2>Estado de Entrega de Requisitos</h2>
             <ul style="list-style: none; padding: 0; margin: 0;">
-                <li style="margin-bottom: 10px;">
-                    <strong>DUI:</strong> 
-                    {% set tiene_dui = archivos | selectattr('tipo_documento', 'equalto', 'dui') | list %}
-                    {% if tiene_dui %}
-                        <span class="badge validado">Archivo entregado - Validado</span>
-                    {% else %}
-                        <span class="badge pendiente">Pendiente de entrega</span>
-                    {% endif %}
-                </li>
-                <li style="margin-bottom: 10px;">
-                    <strong>Antecedentes:</strong> 
-                    {% set tiene_ant = archivos | selectattr('tipo_documento', 'equalto', 'antecedentes') | list %}
-                    {% if tiene_ant %}
-                        <span class="badge validado">Archivo entregado - Validado</span>
-                    {% else %}
-                        <span class="badge pendiente">Pendiente de entrega</span>
-                    {% endif %}
-                </li>
-                <li style="margin-bottom: 5px;">
-                    <strong>Carnet de Junta:</strong> 
-                    {% set tiene_car = archivos | selectattr('tipo_documento', 'equalto', 'carnet_junta') | list %}
-                    {% if tiene_car %}
-                        <span class="badge validado">Archivo entregado - Validado</span>
-                    {% else %}
-                        <span class="badge pendiente">Pendiente de entrega</span>
-                    {% endif %}
-                </li>
+                {% for clave, etiqueta in tipos_documento.items() %}
+                    {% set tiene_doc = archivos | selectattr('tipo_documento', 'equalto', clave) | list %}
+                    <li style="margin-bottom: 8px;">
+                        <strong>{{ etiqueta }}:</strong>
+                        {% if tiene_doc %}
+                            <span class="badge validado">Entregado (v{{ tiene_doc[0].version }})</span>
+                        {% else %}
+                            <span class="badge pendiente">Pendiente de entrega</span>
+                        {% endif %}
+                    </li>
+                {% endfor %}
             </ul>
         </div>
 
-        <!-- Formulario para subir archivos -->
+        <!-- Formulario para subir o actualizar archivos -->
         <div style="border: 1px solid #ccc; padding: 20px; border-radius: 6px; margin-top: 20px; background: #fafafa;">
-            <h2>Subir Nuevo Documento</h2>
+            <h2>Subir o Actualizar Documento</h2>
             <form action="{{ url_for('subir_archivo', empleado_id=empleado.id) }}" method="POST" enctype="multipart/form-data">
                 
                 <div class="form-group">
                     <label for="tipo_documento">Tipo de Documento:</label>
                     <select name="tipo_documento" id="tipo_documento" required>
                         <option value="" disabled selected>Seleccione un tipo</option>
-                        <option value="dui">DUI</option>
-                        <option value="antecedentes">Antecedentes</option>
-                        <option value="carnet_junta">Carnet de Junta</option>
+                        {% for clave, etiqueta in tipos_documento.items() %}
+                            <option value="{{ clave }}">{{ etiqueta }}</option>
+                        {% endfor %}
                     </select>
                 </div>
 
                 <div class="form-group">
                     <label for="fecha_vencimiento">Fecha de Vencimiento:</label>
                     <input type="date" name="fecha_vencimiento" id="fecha_vencimiento">
-                    <small style="color: #666; display: block; margin-top: 3px;">(Obligatorio si es DUI)</small>
+                    <small style="color: #666; display: block; margin-top: 3px;">(Opcional según el tipo de documento)</small>
                 </div>
 
                 <div class="form-group">
-                    <label for="archivo">Archivo (PDF, DOC, DOCX - Máx 512KB):</label>
-                    <input type="file" name="archivo" id="archivo" accept=".pdf,.doc,.docx" required>
+                    <label for="archivo">Archivo (PDF, DOC, DOCX, JPG, PNG - Máx 1 MB):</label>
+                    <div class="drop-zone" id="drop-zone-archivos">
+                        <span class="drop-text">Arrastra el archivo aquí o haz clic en esta casilla</span>
+                        <input type="file" name="archivo" id="archivo" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" required>
+                    </div>
                 </div>
 
                 <div class="form-actions" style="margin-top: 20px;">
-                    <button type="submit">Subir Archivo</button>
+                    <button type="submit">Subir / Actualizar Archivo</button>
                 </div>
             </form>
         </div>
@@ -96,7 +108,7 @@
             <tbody>
                 {% for arch in archivos %}
                 <tr>
-                    <td><strong>{{ arch.tipo_documento | upper }}</strong></td>
+                    <td><strong>{{ tipos_documento.get(arch.tipo_documento, arch.tipo_documento) }}</strong></td>
                     <td>{{ arch.nombre_original }}</td>
                     <td>v{{ arch.version }}</td>
                     <td>{{ arch.fecha_vencimiento or 'N/A' }}</td>
@@ -122,5 +134,46 @@
             </tbody>
         </table>
     </div>
+
+    <script>
+        const zone = document.getElementById('drop-zone-archivos');
+        const input = document.getElementById('archivo');
+        const textSpan = zone.querySelector('.drop-text');
+
+        zone.addEventListener('click', () => input.click());
+
+        zone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            zone.classList.add('dragover');
+        });
+
+        zone.addEventListener('dragleave', () => {
+            zone.classList.remove('dragover');
+        });
+
+        zone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                input.files = e.dataTransfer.files;
+                actualizarCasillaArchivo(e.dataTransfer.files[0]);
+            }
+        });
+
+        input.addEventListener('change', () => {
+            if (input.files.length > 0) {
+                actualizarCasillaArchivo(input.files[0]);
+            }
+        });
+
+        function actualizarCasillaArchivo(file) {
+            if (file.size > 1024 * 1024) {
+                alert('El archivo "' + file.name + '" supera el límite de 1 MB.');
+                return;
+            }
+            zone.classList.add('cargado');
+            textSpan.textContent = 'Archivo seleccionado: ' + file.name;
+        }
+    </script>
 </body>
 </html>

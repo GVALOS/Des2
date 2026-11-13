@@ -8,13 +8,34 @@ from flask import Flask, Response, render_template, request, redirect, url_for, 
 
 app = Flask(__name__)
 
-# Configuración de límites y restricciones de subida
-TAMANO_MAXIMO_ARCHIVO = 512 * 1024  # 512 KB
+# Configuración de límites y restricciones de subida (1 MB por slot)
+TAMANO_MAXIMO_ARCHIVO = 1024 * 1024  # 1 MB
 
-EXTENSIONES_PERMITIDAS = {".pdf", ".doc", ".docx"}
-TIPOS_DOCUMENTO = {"dui", "antecedentes", "carnet_junta"}
+EXTENSIONES_PERMITIDAS = {".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png"}
 
-# Conexión centralizada a MySQL (XAMPP - Puerto 3306)
+# Diccionario ordenado estrictamente del 1 al 14
+TIPOS_DOCUMENTO = {
+    "fotografia_cedula": "1. Fotografía tamaño cédula",
+    "titulo_academico": "2. Fotocopia de título de último grado académico y certificaciones",
+    "carnet_junta": "3. Fotocopia de carnet de Junta de Vigilancia (150x150) según aplique",
+    "curriculum": "4. Curriculum vitae",
+    "solvencia_pnc": "5. Solvencia de la Policía Nacional Civil",
+    "antecedentes": "6. Antecedentes penales",
+    "recomendacion_personal_1": "7.1 Recomendación personal 1",
+    "recomendacion_personal_2": "7.2 Recomendación personal 2",
+    "recomendacion_laboral_1": "8.1 Recomendación laboral 1",
+    "recomendacion_laboral_2": "8.2 Recomendación laboral 2",
+    "dui": "9. Fotocopia de DUI (150x150)",
+    "nit": "10. Fotocopia de NIT (150x150)",
+    "isss": "11. Fotocopia de ISSS",
+    "afp": "12. Fotocopia de AFP (150x150)",
+    "libreta_ahorros": "13. Fotocopia de libreta de ahorros de Banco Agrícola",
+    "partida_nacimiento_hijos": "14. Copia de partida de nacimiento de hijos (edades de 0 a 12 años) *"
+}
+
+DOCUMENTOS_OPCIONALES = set(TIPOS_DOCUMENTO.keys())
+DOCUMENTOS_EVALUADOS_RESUMEN = set(TIPOS_DOCUMENTO.keys()) - {"partida_nacimiento_hijos"}
+
 def conectar():
     return mysql.connector.connect(
         host="localhost",
@@ -24,7 +45,6 @@ def conectar():
         database="hospital"
     )
 
-# Función auxiliar para mostrar errores de subida con un botón de regreso amigable
 def responder_error_subida(empleado_id, mensaje_error, codigo_estado=400):
     html_error = f"""
     <!DOCTYPE html>
@@ -33,51 +53,18 @@ def responder_error_subida(empleado_id, mensaje_error, codigo_estado=400):
         <meta charset="UTF-8">
         <title>Error de Subida</title>
         <style>
-            body {{
-                font-family: Arial, sans-serif;
-                background-color: #f8f9fa;
-                margin: 0;
-                padding: 40px;
-            }}
-            .container-error {{
-                max-width: 600px;
-                margin: 0 auto;
-                padding: 30px;
-                background-color: #ffffff;
-                border-left: 5px solid #dc3545;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                border-radius: 6px;
-            }}
-            h2 {{
-                color: #dc3545;
-                margin-top: 0;
-            }}
-            p {{
-                color: #333333;
-                font-size: 16px;
-            }}
-            .btn-regresar {{
-                display: inline-block;
-                margin-top: 20px;
-                padding: 10px 20px;
-                background-color: #0d6efd;
-                color: #ffffff;
-                text-decoration: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }}
-            .btn-regresar:hover {{
-                background-color: #0b5ed7;
-            }}
+            body {{ font-family: Arial, sans-serif; background-color: #f8f9fa; margin: 0; padding: 40px; }}
+            .container-error {{ max-width: 600px; margin: 0 auto; padding: 30px; background-color: #ffffff; border-left: 5px solid #dc3545; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 6px; }}
+            h2 {{ color: #dc3545; margin-top: 0; }}
+            p {{ color: #333333; font-size: 16px; }}
+            .btn-regresar {{ display: inline-block; margin-top: 20px; padding: 10px 20px; background-color: #0d6efd; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold; }}
         </style>
     </head>
     <body>
         <div class="container-error">
             <h2>Error al procesar el archivo</h2>
             <p>{mensaje_error}</p>
-            <a href="{url_for('listar_archivos_empleado', empleado_id=empleado_id)}" class="btn-regresar">
-                &larr; Volver a la lista de archivos
-            </a>
+            <a href="{url_for('listar_archivos_empleado', empleado_id=empleado_id)}" class="btn-regresar">← Volver a la lista de archivos</a>
         </div>
     </body>
     </html>
@@ -91,10 +78,13 @@ def listar_empleados():
     cursor = conexion.cursor(dictionary=True)
     try:
         consulta = """
-            SELECT e.id, e.nombre, e.dui, e.perfil, d.estado_dui, d.observaciones
+            SELECT e.id, e.nombre, e.dui, e.perfil, d.observaciones,
+                   COUNT(DISTINCT a.tipo_documento) AS total_docs
             FROM empleados AS e
             LEFT JOIN documentos AS d ON e.id = d.empleado_id
+            LEFT JOIN archivos AS a ON e.id = a.empleado_id
             WHERE e.nombre LIKE %s OR e.dui LIKE %s
+            GROUP BY e.id, e.nombre, e.dui, e.perfil, d.observaciones
             ORDER BY e.id
         """
         parametro = f"%{busqueda}%"
@@ -112,51 +102,103 @@ def registrar_empleado():
         nombre = request.form.get("nombre", "").strip()
         dui = request.form.get("dui", "").strip()
         perfil = request.form.get("perfil", "").strip()
-        estado_dui = request.form.get("estado_dui", "pendiente")
         observaciones = request.form.get("observaciones", "").strip()
-        
+
         if not nombre or not dui or not perfil:
-            mensaje = "Por favor, completa todos los campos obligatorios."
+            mensaje = "Por favor, completa los campos personales obligatorios."
         else:
-            conexion = conectar()
-            cursor = conexion.cursor(dictionary=True)
-            try:
-                cursor.execute("SELECT id FROM empleados WHERE dui = %s", (dui,))
-                if cursor.fetchone():
-                    mensaje = "Error: El número de DUI ingresado ya se encuentra registrado."
-                else:
-                    cursor.execute(
-                        "INSERT INTO empleados (nombre, dui, perfil) VALUES (%s, %s, %s)",
-                        (nombre, dui, perfil)
-                    )
-                    empleado_id = cursor.lastrowid
-                    cursor.execute(
-                        "INSERT INTO documentos (empleado_id, estado_dui, observaciones) VALUES (%s, %s, %s)",
-                        (empleado_id, estado_dui, observaciones)
-                    )
-                    conexion.commit()
-                    return redirect(url_for("listar_empleados"))
-            except Exception as e:
-                conexion.rollback()
-                mensaje = f"Error al procesar el registro: {e}"
-            finally:
-                cursor.close()
-                conexion.close()
-    return render_template("nuevo.html", mensaje=mensaje)
+            archivos_a_guardar = []
+            error_archivo = None
+
+            for clave, etiqueta in TIPOS_DOCUMENTO.items():
+                archivo = request.files.get(f"archivo_{clave}")
+                fecha_texto = request.form.get(f"fecha_vencimiento_{clave}", "").strip()
+                fecha_vencimiento = None
+
+                if fecha_texto:
+                    try:
+                        fecha_vencimiento = date.fromisoformat(fecha_texto)
+                    except ValueError:
+                        error_archivo = f"La fecha de vencimiento en '{etiqueta}' debe tener formato AAAA-MM-DD."
+                        break
+
+                if archivo is None or not archivo.filename or not archivo.filename.strip():
+                    continue
+
+                nombre_original = archivo.filename.strip()
+                if len(nombre_original) > 255 or "/" in nombre_original or "\\" in nombre_original:
+                    error_archivo = f"El nombre del archivo en '{etiqueta}' no es válido."
+                    break
+
+                extension = Path(nombre_original).suffix.lower()
+                if extension not in EXTENSIONES_PERMITIDAS:
+                    error_archivo = f"Formato no permitido en '{etiqueta}'. Solo se permiten .pdf, .doc, .docx, .jpg, .jpeg y .png."
+                    break
+
+                contenido = archivo.stream.read(TAMANO_MAXIMO_ARCHIVO + 1)
+                if not contenido:
+                    error_archivo = f"El archivo en '{etiqueta}' está vacío."
+                    break
+                if len(contenido) > TAMANO_MAXIMO_ARCHIVO:
+                    error_archivo = f"El archivo en '{etiqueta}' supera el tamaño máximo permitido de 1 MB."
+                    break
+
+                archivos_a_guardar.append((clave, nombre_original, contenido, fecha_vencimiento))
+
+            if error_archivo:
+                mensaje = error_archivo
+            else:
+                conexion = conectar()
+                cursor = conexion.cursor(dictionary=True)
+                try:
+                    cursor.execute("SELECT id FROM empleados WHERE dui = %s", (dui,))
+                    if cursor.fetchone():
+                        mensaje = "Error: El número de DUI ingresado ya se encuentra registrado."
+                    else:
+                        cursor.execute(
+                            "INSERT INTO empleados (nombre, dui, perfil) VALUES (%s, %s, %s)",
+                            (nombre, dui, perfil)
+                        )
+                        empleado_id = cursor.lastrowid
+                        cursor.execute(
+                            "INSERT INTO documentos (empleado_id, observaciones) VALUES (%s, %s)",
+                            (empleado_id, observaciones)
+                        )
+                        for clave, nombre_orig, contenido_bin, fecha_v in archivos_a_guardar:
+                            cursor.execute(
+                                """INSERT INTO archivos
+                                   (empleado_id, tipo_documento, nombre_original, contenido, version, fecha_vencimiento)
+                                   VALUES (%s, %s, %s, %s, 1, %s)""",
+                                (empleado_id, clave, nombre_orig, contenido_bin, fecha_v)
+                            )
+                        conexion.commit()
+                        return redirect(url_for("listar_empleados"))
+                except Exception as e:
+                    conexion.rollback()
+                    mensaje = f"Error al procesar el registro: {e}"
+                finally:
+                    cursor.close()
+                    conexion.close()
+
+    return render_template(
+        "nuevo.html",
+        mensaje=mensaje,
+        tipos_documento=TIPOS_DOCUMENTO,
+        opcionales=DOCUMENTOS_OPCIONALES
+    )
 
 @app.route("/empleados/editar/<int:id>", methods=["GET", "POST"])
 def editar_empleado(id):
     conexion = conectar()
     cursor = conexion.cursor(dictionary=True)
     error = ""
-    
+
     if request.method == "POST":
         nombre = request.form.get("nombre", "").strip()
         dui = request.form.get("dui", "").strip()
         perfil = request.form.get("perfil", "").strip()
-        estado_dui = request.form.get("estado_dui", "pendiente")
         observaciones = request.form.get("observaciones", "").strip()
-        
+
         if not nombre or not dui or not perfil:
             error = "Por favor, completa todos los campos obligatorios."
         else:
@@ -165,26 +207,26 @@ def editar_empleado(id):
                     "UPDATE empleados SET nombre = %s, dui = %s, perfil = %s WHERE id = %s",
                     (nombre, dui, perfil, id)
                 )
-                
+
                 cursor.execute("SELECT id FROM documentos WHERE empleado_id = %s", (id,))
                 if cursor.fetchone():
                     cursor.execute(
-                        "UPDATE documentos SET estado_dui = %s, observaciones = %s WHERE empleado_id = %s",
-                        (estado_dui, observaciones, id)
+                        "UPDATE documentos SET observaciones = %s WHERE empleado_id = %s",
+                        (observaciones, id)
                     )
                 else:
                     cursor.execute(
-                        "INSERT INTO documentos (empleado_id, estado_dui, observaciones) VALUES (%s, %s, %s)",
-                        (id, estado_dui, observaciones)
+                        "INSERT INTO documentos (empleado_id, observaciones) VALUES (%s, %s)",
+                        (id, observaciones)
                     )
                 conexion.commit()
                 return redirect(url_for("listar_empleados"))
             except Exception as e:
                 conexion.rollback()
                 error = f"Error al actualizar el registro: {e}"
-                
+
     cursor.execute("""
-        SELECT e.id, e.nombre, e.dui, e.perfil, d.estado_dui, d.observaciones
+        SELECT e.id, e.nombre, e.dui, e.perfil, d.observaciones
         FROM empleados e
         LEFT JOIN documentos d ON e.id = d.empleado_id
         WHERE e.id = %s
@@ -192,10 +234,10 @@ def editar_empleado(id):
     empleado = cursor.fetchone()
     cursor.close()
     conexion.close()
-    
+
     if not empleado:
         return "Empleado no encontrado", 404
-        
+
     return render_template("editar.html", empleado=empleado, error=error)
 
 @app.route("/empleados/eliminar/<int:id>", methods=["POST"])
@@ -205,7 +247,7 @@ def eliminar_empleado(id):
     try:
         cursor.execute("DELETE FROM empleados WHERE id = %s", (id,))
         conexion.commit()
-    except Exception as e:
+    except Exception:
         conexion.rollback()
     finally:
         cursor.close()
@@ -217,19 +259,24 @@ def detalle_empleado(id):
     conexion = conectar()
     cursor = conexion.cursor(dictionary=True)
     cursor.execute("""
-        SELECT e.id, e.nombre, e.dui, e.perfil, d.estado_dui, d.observaciones
+        SELECT e.id, e.nombre, e.dui, e.perfil, d.observaciones
         FROM empleados e
         LEFT JOIN documentos d ON e.id = d.empleado_id
         WHERE e.id = %s
     """, (id,))
     empleado = cursor.fetchone()
+
+    cursor.execute("SELECT DISTINCT tipo_documento FROM archivos WHERE empleado_id = %s", (id,))
+    subidos = {row["tipo_documento"] for row in cursor.fetchall()}
     cursor.close()
     conexion.close()
-    
+
     if not empleado:
         return "Empleado no encontrado", 404
-        
-    return render_template("detalle.html", empleado=empleado)
+
+    # Mantiene estrictamente el orden del diccionario TIPOS_DOCUMENTO del 1 al 14
+    faltantes = [etiqueta for k, etiqueta in TIPOS_DOCUMENTO.items() if k in DOCUMENTOS_EVALUADOS_RESUMEN and k not in subidos]
+    return render_template("detalle.html", empleado=empleado, subidos=subidos, faltantes=faltantes)
 
 def calcular_estado_archivo(version, max_version, fecha_vencimiento):
     if version < max_version:
@@ -245,7 +292,7 @@ def resumen():
     cursor = conexion.cursor(dictionary=True)
     try:
         cursor.execute("""
-            SELECT e.id, e.nombre, e.perfil, d.estado_dui, d.observaciones
+            SELECT e.id, e.nombre, e.perfil, d.observaciones
             FROM empleados AS e
             LEFT JOIN documentos AS d ON e.id = d.empleado_id
             ORDER BY e.id
@@ -253,7 +300,7 @@ def resumen():
         registros = cursor.fetchall()
 
         cursor.execute("""
-            SELECT empleado_id, tipo_documento, version, fecha_vencimiento 
+            SELECT empleado_id, tipo_documento, version, fecha_vencimiento
             FROM archivos
         """)
         todos_archivos = cursor.fetchall()
@@ -261,43 +308,38 @@ def resumen():
         cursor.close()
         conexion.close()
 
+    docs_por_empleado = {}
+    max_versiones_map = {}
+    for a in todos_archivos:
+        docs_por_empleado.setdefault(a["empleado_id"], set()).add(a["tipo_documento"])
+        key = (a["empleado_id"], a["tipo_documento"])
+        max_versiones_map[key] = max(max_versiones_map.get(key, 0), a["version"])
+
     total = len(registros)
-    validados = 0
-    pendientes = 0
-    rechazados = 0
-    sin_registro = 0
+    completos = 0
+    incompletos = 0
     por_perfil = {}
     requieren_atencion = []
 
     for r in registros:
-        if r["estado_dui"] == "validado":
-            validados += 1
-        elif r["estado_dui"] == "pendiente":
-            pendientes += 1
-            requieren_atencion.append(r)
-        elif r["estado_dui"] == "rechazado":
-            rechazados += 1
-            requieren_atencion.append(r)
+        subidos = docs_por_empleado.get(r["id"], set())
+        faltantes = DOCUMENTOS_EVALUADOS_RESUMEN - subidos
+        r["faltantes_count"] = len(faltantes)
+
+        if not faltantes:
+            completos += 1
         else:
-            sin_registro += 1
+            incompletos += 1
             requieren_atencion.append(r)
 
         perfil = r["perfil"]
         por_perfil[perfil] = por_perfil.get(perfil, 0) + 1
-
-    max_versiones_map = {}
-    for a in todos_archivos:
-        key = (a["empleado_id"], a["tipo_documento"])
-        max_versiones_map[key] = max(max_versiones_map.get(key, 0), a["version"])
 
     conteo_archivos_estado = {"Vigente": 0, "Vencido": 0, "Obsoleto": 0}
     for a in todos_archivos:
         max_v = max_versiones_map.get((a["empleado_id"], a["tipo_documento"]), 1)
         estado_calc = calcular_estado_archivo(a["version"], max_v, a["fecha_vencimiento"])
         conteo_archivos_estado[estado_calc] += 1
-
-    completos = validados
-    incompletos = total - completos
 
     def porcentaje(parte):
         if total == 0:
@@ -323,18 +365,10 @@ def resumen():
     return render_template(
         "resumen.html",
         total=total,
-        validados=validados,
-        pendientes=pendientes,
-        rechazados=rechazados,
-        sin_registro=sin_registro,
         completos=completos,
         incompletos=incompletos,
         pct_completos=pct_completos,
         pct_incompletos=pct_incompletos,
-        pct_validados=porcentaje(validados),
-        pct_pendientes=porcentaje(pendientes),
-        pct_rechazados=porcentaje(rechazados),
-        pct_sin_registro=porcentaje(sin_registro),
         nivel=nivel,
         alerta=alerta,
         por_perfil=por_perfil,
@@ -349,10 +383,13 @@ def exportar_csv():
     cursor = conexion.cursor(dictionary=True)
     try:
         cursor.execute("""
-            SELECT e.id, e.nombre, e.dui, e.perfil, d.estado_dui, d.observaciones
+            SELECT e.id, e.nombre, e.dui, e.perfil, d.observaciones,
+                   COUNT(DISTINCT a.tipo_documento) AS total_docs
             FROM empleados AS e
             LEFT JOIN documentos AS d ON e.id = d.empleado_id
+            LEFT JOIN archivos AS a ON e.id = a.empleado_id
             WHERE e.nombre LIKE %s OR e.dui LIKE %s
+            GROUP BY e.id, e.nombre, e.dui, e.perfil, d.observaciones
             ORDER BY e.id
         """, (f"%{busqueda}%", f"%{busqueda}%"))
         filas = cursor.fetchall()
@@ -362,11 +399,11 @@ def exportar_csv():
 
     salida = io.StringIO()
     escritor = csv.writer(salida)
-    escritor.writerow(["ID", "Nombre", "DUI", "Perfil", "Estado DUI", "Observaciones"])
+    escritor.writerow(["ID", "Nombre", "DUI", "Perfil", "Documentos Entregados", "Observaciones"])
     for f in filas:
         escritor.writerow([
             f["id"], f["nombre"], f["dui"], f["perfil"],
-            f["estado_dui"] or "sin registro",
+            f["total_docs"],
             f["observaciones"] or "",
         ])
 
@@ -381,7 +418,7 @@ def exportar_csv():
 def subir_archivo(empleado_id):
     archivo = request.files.get("archivo")
     if archivo is None or not archivo.filename or not archivo.filename.strip():
-        return responder_error_subida(empleado_id, "Seleccione un archivo PDF o Word válido.", 400)
+        return responder_error_subida(empleado_id, "Seleccione un archivo válido.", 400)
 
     nombre_original = archivo.filename.strip()
     if len(nombre_original) > 255 or "/" in nombre_original or "\\" in nombre_original:
@@ -389,22 +426,20 @@ def subir_archivo(empleado_id):
 
     extension = Path(nombre_original).suffix.lower()
     if extension not in EXTENSIONES_PERMITIDAS:
-        return responder_error_subida(empleado_id, "Solo se permiten archivos .pdf, .doc y .docx.", 400)
+        return responder_error_subida(empleado_id, "Solo se permiten archivos .pdf, .doc, .docx, .jpg, .jpeg y .png.", 400)
 
     contenido = archivo.stream.read(TAMANO_MAXIMO_ARCHIVO + 1)
     if not contenido:
         return responder_error_subida(empleado_id, "El archivo está vacío.", 400)
     if len(contenido) > TAMANO_MAXIMO_ARCHIVO:
-        return responder_error_subida(empleado_id, "El archivo supera el tamaño máximo permitido de 512 KB.", 413)
+        return responder_error_subida(empleado_id, "El archivo supera el tamaño máximo permitido de 1 MB.", 413)
 
-    tipo_documento = request.form.get("tipo_documento", "").strip().lower()
+    tipo_documento = request.form.get("tipo_documento", "").strip()
     if tipo_documento not in TIPOS_DOCUMENTO:
         return responder_error_subida(empleado_id, "Tipo de documento no permitido.", 400)
 
     fecha_texto = request.form.get("fecha_vencimiento", "").strip()
     fecha_vencimiento = None
-    if tipo_documento == "dui" and not fecha_texto:
-        return responder_error_subida(empleado_id, "La fecha de vencimiento es obligatoria para el DUI.", 400)
     if fecha_texto:
         try:
             fecha_vencimiento = date.fromisoformat(fecha_texto)
@@ -439,27 +474,7 @@ def subir_archivo(empleado_id):
             (empleado_id, tipo_documento, nombre_original, contenido, nueva_version, fecha_vencimiento)
         )
 
-        cursor.execute("SELECT id FROM documentos WHERE empleado_id = %s", (empleado_id,))
-        doc_existe = cursor.fetchone()
-
-        if doc_existe:
-            if tipo_documento == "dui":
-                cursor.execute("UPDATE documentos SET estado_dui = 'validado' WHERE empleado_id = %s", (empleado_id,))
-            elif tipo_documento == "antecedentes":
-                cursor.execute("UPDATE documentos SET estado_antecedentes = 'validado' WHERE empleado_id = %s", (empleado_id,))
-            elif tipo_documento == "carnet_junta":
-                cursor.execute("UPDATE documentos SET estado_carnet = 'validado' WHERE empleado_id = %s", (empleado_id,))
-        else:
-            est_dui = 'validado' if tipo_documento == 'dui' else 'pendiente'
-            est_ant = 'validado' if tipo_documento == 'antecedentes' else 'pendiente'
-            est_car = 'validado' if tipo_documento == 'carnet_junta' else 'pendiente'
-            cursor.execute("""
-                INSERT INTO documentos (empleado_id, estado_dui, estado_antecedentes, estado_carnet)
-                VALUES (%s, %s, %s, %s)
-            """, (empleado_id, est_dui, est_ant, est_car))
-
         conexion.commit()
-
         return redirect(url_for('listar_archivos_empleado', empleado_id=empleado_id))
 
     except mysql.connector.Error:
@@ -484,16 +499,8 @@ def listar_archivos_empleado(empleado_id):
         if not empleado:
             return "Empleado no encontrado", 404
 
-        cursor.execute("""
-            SELECT estado_dui, estado_antecedentes, estado_carnet, observaciones 
-            FROM documentos WHERE empleado_id = %s
-        """, (empleado_id,))
-        documentos_info = cursor.fetchone() or {
-            "estado_dui": "pendiente", 
-            "estado_antecedentes": "pendiente", 
-            "estado_carnet": "pendiente", 
-            "observaciones": ""
-        }
+        cursor.execute("SELECT observaciones FROM documentos WHERE empleado_id = %s", (empleado_id,))
+        documentos_info = cursor.fetchone() or {"observaciones": ""}
 
         cursor.execute("""
             SELECT id, empleado_id, tipo_documento, nombre_original, version, fecha_vencimiento, fecha_subida
@@ -521,7 +528,14 @@ def listar_archivos_empleado(empleado_id):
         cursor.close()
         conexion.close()
 
-    return render_template("archivos_empleado.html", empleado=empleado, archivos=archivos, documentos_info=documentos_info)
+    return render_template(
+        "archivos_empleado.html",
+        empleado=empleado,
+        archivos=archivos,
+        documentos_info=documentos_info,
+        tipos_documento=TIPOS_DOCUMENTO,
+        opcionales=DOCUMENTOS_OPCIONALES
+    )
 
 @app.route("/archivos/descargar/<int:archivo_id>")
 def descargar_archivo(archivo_id):
@@ -529,8 +543,8 @@ def descargar_archivo(archivo_id):
     cursor = conexion.cursor(dictionary=True)
     try:
         cursor.execute("""
-            SELECT nombre_original, contenido 
-            FROM archivos 
+            SELECT nombre_original, contenido
+            FROM archivos
             WHERE id = %s
         """, (archivo_id,))
         archivo = cursor.fetchone()

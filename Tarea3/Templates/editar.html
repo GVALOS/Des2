@@ -37,15 +37,6 @@
             </div>
             
             <div class="form-group">
-                <label for="estado_dui">Estado del DUI:</label>
-                <select id="estado_dui" name="estado_dui">
-                    <option value="pendiente" {% if empleado.estado_dui == 'pendiente' %}selected{% endif %}>Pendiente</option>
-                    <option value="validado" {% if empleado.estado_dui == 'validado' %}selected{% endif %}>Validado</option>
-                    <option value="rechazado" {% if empleado.estado_dui == 'rechazado' %}selected{% endif %}>Rechazado</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
                 <label for="observaciones">Observaciones:</label>
                 <textarea id="observaciones" name="observaciones" placeholder="Comentarios adicionales...">{{ empleado.observaciones or '' }}</textarea>
             </div>

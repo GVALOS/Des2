@@ -28,7 +28,7 @@
                     <th>Nombre</th>
                     <th>DUI</th>
                     <th>Perfil</th>
-                    <th>Estado DUI</th>
+                    <th>Documentos</th>
                     <th>Observaciones</th>
                     <th>Acciones</th>
                 </tr>
@@ -40,7 +40,7 @@
                     <td>{{ empleado.nombre }}</td>
                     <td>{{ empleado.dui }}</td>
                     <td>{{ empleado.perfil }}</td>
-                    <td><span class="badge {{ empleado.estado_dui }}">{{ empleado.estado_dui or 'Sin registro' }}</span></td>
+                    <td><span class="badge validado">{{ empleado.total_docs }} subidos</span></td>
                     <td>{{ empleado.observaciones or '-' }}</td>
                     <td>
                         <a href="/empleados/detalle/{{ empleado.id }}">Detalle</a> |
@@ -60,4 +60,4 @@
         </table>
     </div>
 </body>
-</html>
+</html>     
