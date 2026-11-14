@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block titulo %}Resumen{% endblock %}
+
+{% block contenido %}
+<div class="titulo-pagina">
+    <div>
+        <h1>Resumen de expedientes</h1>
+        <p class="texto-suave">Estado general de la documentación del personal</p>
+    </div>
+    <div class="titulo-pagina__acciones">
+        <a href="{{ url_for('exportar_csv') }}" class="btn btn--exito">Exportar a CSV</a>
+    </div>
+</div>
+
+<div class="alerta-nivel alerta-nivel--{{ nivel }}">{{ alerta }}</div>
+
+<div class="cards">
+    <div class="card">
+        <p class="card__numero">{{ total }}</p>
+        <p class="card__etiqueta">Empleados registrados</p>
+    </div>
+    <a class="card card--validado" href="{{ url_for('listar_empleados', expediente='completo') }}">
+        <p class="card__numero">{{ completos }}</p>
+        <p class="card__etiqueta">Expedientes completos</p>
+        <p class="card__pct">{{ pct_completos }}%</p>
+    </a>
+    <a class="card card--pendiente" href="{{ url_for('listar_empleados', expediente='incompleto') }}">
+        <p class="card__numero">{{ incompletos }}</p>
+        <p class="card__etiqueta">Expedientes incompletos</p>
+        <p class="card__pct">{{ pct_incompletos }}%</p>
+    </a>
+</div>
+
+<section class="tarjeta">
+    <h2>Avance general</h2>
+    {{ m.progreso(pct_completos, pct_completos == 100) }}
+    <p>{{ completos }} de {{ total }} expedientes tienen todos sus requisitos validados y vigentes.</p>
+</section>
+
+<h2>Estado de los archivos</h2>
+<div class="cards">
+    {% for clave, etiqueta in ESTADOS_ARCHIVO.items() %}
+    <a class="card card--{{ clave }}" href="{{ url_for('buscar_documentos', estado=clave) }}">
+        <p class="card__numero">{{ conteo_archivos[clave] }}</p>
+        <p class="card__etiqueta">{{ etiqueta }}</p>
+    </a>
+    {% endfor %}
+</div>
+
+<div class="rejilla-2">
+    <section class="tarjeta">
+        <h2>Avance por perfil</h2>
+        <table>
+            <thead><tr><th>Perfil</th><th>Empleados</th><th>Completos</th><th>Avance</th></tr></thead>
+            <tbody>
+                {% for p in por_perfil %}
+                <tr><td>{{ p.nombre }}</td><td>{{ p.total }}</td><td>{{ p.completos }}</td><td>{{ p.pct }}%</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="tarjeta">
+        <h2>Vencimientos ({{ DIAS_POR_VENCER }} días)</h2>
+        {% if alertas_vencimiento %}
+        <table>
+            <thead><tr><th>Empleado</th><th>Documento</th><th>Vence</th><th>Estado</th></tr></thead>
+            <tbody>
+                {% for a in alertas_vencimiento %}
+                <tr>
+                    <td><a href="{{ url_for('listar_archivos_empleado', empleado_id=a.empleado_id) }}">{{ a.empleado }}</a></td>
+                    <td>{{ a.tipo }}</td>
+                    <td>{{ a.fecha_vencimiento | fecha }}</td>
+                    <td>{{ m.badge_archivo(a.estado) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="texto-suave">No hay documentos vencidos ni próximos a vencer.</p>
+        {% endif %}
+    </section>
+</div>
+
+<section class="tarjeta">
+    <h2>Estado por tipo de documento</h2>
+    <div class="tabla-contenedor">
+        <table>
+            <thead>
+                <tr><th>Documento</th><th>Lo requieren</th>
+                    {% for clave, etiqueta in ESTADOS_DOCUMENTO.items() %}<th>{{ etiqueta }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+                {% for t in por_tipo %}
+                <tr>
+                    <td>{{ t.nombre }}</td><td>{{ t.requerido_por }}</td>
+                    {% for clave in ESTADOS_DOCUMENTO %}<td>{{ t[clave] }}</td>{% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="tarjeta">
+    <h2>Expedientes por completar</h2>
+    <div class="tabla-contenedor">
+        <table>
+            <thead><tr><th>Empleado</th><th>Perfil</th><th>Avance</th><th>Faltan</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for e in requieren_atencion %}
+                <tr>
+                    <td><strong>{{ e.nombre }}</strong><br><small class="texto-suave">DUI {{ e.dui }}</small></td>
+                    <td>{{ PERFILES[e.perfil] }}</td>
+                    <td class="celda-avance">{{ m.progreso(e.avance) }}<small>{{ e.avance }}%</small></td>
+                    <td><small>{{ e.faltantes | map(attribute='nombre') | join(', ') }}</small></td>
+                    <td class="acciones-tabla">
+                        <a href="{{ url_for('listar_archivos_empleado', empleado_id=e.id) }}" class="btn btn--sm">Documentos</a>
+                        {% if es_admin %}<a href="{{ url_for('editar_empleado', id=e.id) }}" class="btn btn--contorno btn--sm">Editar</a>{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="vacio">Todos los expedientes están completos.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

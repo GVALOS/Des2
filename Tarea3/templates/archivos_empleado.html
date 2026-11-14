@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block titulo %}Documentos de {{ empleado.nombre }}{% endblock %}
+
+{% block contenido %}
+<nav class="migas">
+    <a href="{{ url_for('listar_empleados') }}">Empleados</a> ›
+    <a href="{{ url_for('detalle_empleado', id=empleado.id) }}">{{ empleado.nombre }}</a> › <span>Documentos</span>
+</nav>
+
+<div class="titulo-pagina">
+    <div>
+        <h1>Expediente de documentos</h1>
+        <p class="texto-suave"><strong>{{ empleado.nombre }}</strong> · DUI {{ empleado.dui }} · {{ PERFILES[empleado.perfil] }}</p>
+    </div>
+    <div class="titulo-pagina__avance">
+        {{ m.progreso(empleado.avance, empleado.completo) }}
+        <small>{{ empleado.validados }} de {{ empleado.total_requeridos }} requisitos validados ({{ empleado.avance }}%)</small>
+    </div>
+</div>
+
+{% if error %}<div class="aviso aviso--error" role="alert">{{ error }}</div>{% endif %}
+
+{% if not es_admin %}
+<div class="aviso aviso--info">Tienes acceso de <strong>solo consulta</strong>: puedes ver y descargar documentos, pero no modificarlos.</div>
+{% endif %}
+
+<div class="rejilla-2">
+    <!-- Lista de requisitos -->
+    <section class="tarjeta">
+        <h2>Estado de entrega de requisitos</h2>
+        <ul class="checklist">
+            {% for d in empleado.documentos if d.requerido or d.version %}
+            <li class="checklist__item checklist__item--{{ d.estado }}">
+                <div class="checklist__info">
+                    <strong>{{ d.nombre }}</strong>
+                    {% if not d.requerido %}<span class="etiqueta-opcional">Opcional</span>{% endif %}
+                    <small class="texto-suave">{{ d.descripcion }}</small>
+                    {% if d.version %}
+                    <small>Versión actual v{{ d.version }}{% if d.vencimiento %} · vence {{ d.vencimiento | fecha }}{% endif %}</small>
+                    {% endif %}
+                    {% if d.observacion %}<small class="checklist__obs">{{ d.observacion }}</small>{% endif %}
+                </div>
+                <div class="checklist__estado">
+                    {{ m.badge_documento(d.estado) }}
+                    {% if d.estado_archivo in ('vencido', 'por_vencer') %}{{ m.badge_archivo(d.estado_archivo) }}{% endif %}
+                </div>
+                {% if es_admin and d.version %}
+                <details class="revision">
+                    <summary>Revisar</summary>
+                    <form method="POST" action="{{ url_for('cambiar_estado_documento', empleado_id=empleado.id, codigo=d.codigo) }}">
+                        {{ campo_csrf() }}
+                        <input type="text" name="observacion" maxlength="255" value="{{ d.observacion or '' }}"
+                               placeholder="Observación (obligatoria si se rechaza)">
+                        <div class="revision__botones">
+                            <button type="submit" name="estado" value="validado" class="btn btn--exito btn--sm">Validar</button>
+                            <button type="submit" name="estado" value="rechazado" class="btn btn--peligro btn--sm">Rechazar</button>
+                            <button type="submit" name="estado" value="en_revision" class="btn btn--secundario btn--sm">En revisión</button>
+                        </div>
+                    </form>
+                </details>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    {% if es_admin %}
+    <section class="tarjeta">
+        <h2>Subir nuevo documento</h2>
+        <form action="{{ url_for('subir_archivo', empleado_id=empleado.id) }}" method="POST"
+              enctype="multipart/form-data" id="form-subida" novalidate>
+            {{ campo_csrf() }}
+            <div class="campo">
+                <label for="tipo_documento">Tipo de documento <span class="obligatorio">*</span></label>
+                <select name="tipo_documento" id="tipo_documento" required>
+                    <option value="" disabled selected>Seleccione un tipo</option>
+                    <optgroup label="Obligatorios para {{ PERFILES[empleado.perfil] }}">
+                        {% for d in empleado.documentos if d.requerido %}
+                        <option value="{{ d.codigo }}" data-vence="{{ 1 if d.requiere_vencimiento else 0 }}">{{ d.nombre }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    <optgroup label="Opcionales">
+                        {% for d in empleado.documentos if not d.requerido %}
+                        <option value="{{ d.codigo }}" data-vence="{{ 1 if d.requiere_vencimiento else 0 }}">{{ d.nombre }}</option>
+                        {% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+
+            <div class="campo">
+                <label for="fecha_vencimiento">Fecha de vencimiento <span class="obligatorio" id="marca-fecha" hidden>*</span></label>
+                <input type="date" name="fecha_vencimiento" id="fecha_vencimiento">
+                <small class="ayuda" id="ayuda-fecha">Obligatoria solo para documentos que vencen; se marca con * al elegir el tipo.</small>
+            </div>
+
+            <div class="dropzone" id="dropzone" tabindex="0" role="button"
+                 aria-label="Arrastre un archivo o haga clic para seleccionarlo" data-max="{{ tamano_max }}">
+                <input type="file" name="archivo" id="archivo" accept=".pdf,.doc,.docx" class="oculto-visual">
+                <svg class="dropzone__icono" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"
+                          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p class="dropzone__titulo"><strong>Arrastre el documento aquí</strong></p>
+                <p class="dropzone__subtitulo">o <span class="enlace">haga clic para buscarlo</span> en su computadora</p>
+                <p class="dropzone__ayuda">PDF, DOC o DOCX · máximo 512 KB</p>
+                <div class="dropzone__archivo" hidden>
+                    <span class="dropzone__nombre"></span>
+                    <button type="button" class="btn btn--secundario btn--sm" data-quitar-archivo>Quitar</button>
+                </div>
+            </div>
+            <p class="error-campo" id="error-subida" hidden></p>
+
+            <button type="submit" class="btn btn--bloque">Subir archivo</button>
+        </form>
+    </section>
+    {% endif %}
+</div>
+
+<section class="tarjeta">
+    <h2>Historial de versiones</h2>
+    <div class="tabla-contenedor">
+        <table>
+            <thead>
+                <tr>
+                    <th>Documento</th><th>Archivo</th><th>Versión</th><th>Vence</th>
+                    <th>Subido</th><th>Estado</th><th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in archivos %}
+                <tr class="{{ 'fila-obsoleta' if a.estado == 'obsoleto' }}">
+                    <td><strong>{{ a.tipo_nombre }}</strong></td>
+                    <td>{{ a.nombre_original }}<br><small class="texto-suave">{{ a.tamano_bytes | tamano }}</small></td>
+                    <td>v{{ a.version }}</td>
+                    <td>{{ a.fecha_vencimiento | fecha }}</td>
+                    <td>{{ a.fecha_subida | fecha(true) }}<br><small class="texto-suave">{{ a.subido_por or '—' }}</small></td>
+                    <td>{{ m.badge_archivo(a.estado) }}</td>
+                    <td class="acciones-tabla">
+                        {% if a.mime_type == 'application/pdf' %}
+                        <a href="{{ url_for('descargar_archivo', archivo_id=a.id, ver=1) }}" target="_blank" rel="noopener"
+                           class="btn btn--contorno btn--sm">Ver</a>
+                        {% endif %}
+                        <a href="{{ url_for('descargar_archivo', archivo_id=a.id) }}" class="btn btn--sm">Descargar</a>
+                        {% if es_admin %}
+                        <form method="POST" action="{{ url_for('eliminar_archivo', archivo_id=a.id) }}" class="en-linea"
+                              data-confirmar="Se eliminará «{{ a.tipo_nombre }} v{{ a.version }}» ({{ a.nombre_original }}) del expediente de {{ empleado.nombre }}.{% if a.estado != 'obsoleto' %} Es la versión vigente: el documento volverá a quedar en revisión o pendiente.{% endif %}"
+                              data-titulo="¿Eliminar este documento?" data-requiere-motivo>
+                            {{ campo_csrf() }}
+                            <input type="hidden" name="motivo" value="">
+                            <input type="hidden" name="confirmacion" value="">
+                            <button type="submit" class="btn btn--peligro btn--sm">Eliminar</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="vacio">No hay archivos registrados para este empleado.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block titulo %}Buscar documentos{% endblock %}
+
+{% block contenido %}
+<div class="titulo-pagina">
+    <div>
+        <h1>Buscador de documentos</h1>
+        <p class="texto-suave">{{ total_general }} archivo(s) almacenados en el sistema</p>
+    </div>
+</div>
+
+<form id="filtros" method="GET" action="{{ url_for('buscar_documentos') }}"></form>
+
+<div class="catalogo">
+    <aside class="filtros" id="panel-filtros">
+        <div class="filtros__cabecera">
+            <h2>Filtrar</h2>
+            <a href="{{ url_for('buscar_documentos') }}">Limpiar</a>
+        </div>
+        {{ m.faceta_casillas("Estado del archivo", "estado", facetas.estado, sel.estado, "filtros") }}
+        {{ m.faceta_casillas("Tipo de documento", "tipo", facetas.tipo, sel.tipo, "filtros") }}
+        {{ m.faceta_casillas("Perfil del empleado", "perfil", facetas.perfil, sel.perfil, "filtros") }}
+        {{ m.faceta_casillas("Formato", "formato", facetas.formato, sel.formato, "filtros") }}
+        {{ m.faceta_fechas("Fecha de subida", sel, "filtros") }}
+    </aside>
+
+    <section class="resultados">
+        <div class="buscador">
+            <input type="search" name="q" form="filtros" value="{{ sel.q }}"
+                   placeholder="Buscar por empleado, DUI o nombre del archivo">
+            <button type="submit" form="filtros" class="btn">Buscar</button>
+        </div>
+
+        <div class="resultados__barra">
+            <button type="button" class="btn btn--secundario btn--sm solo-movil" data-alternar="#panel-filtros">Filtros</button>
+            <p>
+                {% if paginacion.total %}Mostrando <strong>{{ paginacion.desde }}–{{ paginacion.hasta }}</strong> de <strong>{{ paginacion.total }}</strong> documento(s)
+                {% else %}Sin resultados{% endif %}
+            </p>
+            <label class="ordenar">Ordenar por
+                <select name="orden" form="filtros" data-autoenvio>
+                    {% for clave, opcion in ordenes.items() %}
+                    <option value="{{ clave }}" {% if sel.orden == clave %}selected{% endif %}>{{ opcion[0] }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+
+        {{ m.chips_activos(chips, url_for('buscar_documentos')) }}
+
+        <div class="lista-items">
+            {% for d in documentos %}
+            <article class="item item--documento">
+                <div class="icono-archivo icono-archivo--{{ d.formato }}">{{ d.formato | upper }}</div>
+                <div class="item__cuerpo">
+                    <h3>{{ d.tipo }} <span class="texto-suave">v{{ d.version }}</span></h3>
+                    <p class="item__meta">
+                        <a href="{{ url_for('listar_archivos_empleado', empleado_id=d.empleado_id) }}">{{ d.empleado }}</a>
+                        · DUI {{ d.dui }} · {{ PERFILES[d.perfil] }}
+                    </p>
+                    <p class="item__meta">{{ d.nombre_original }} · {{ d.tamano_bytes | tamano }}
+                        · Subido el {{ d.fecha_subida | fecha }}
+                        {% if d.fecha_vencimiento %} · Vence el {{ d.fecha_vencimiento | fecha }}{% endif %}</p>
+                    <div class="item__etiquetas">{{ m.badge_archivo(d.estado) }}</div>
+                </div>
+                <div class="item__acciones">
+                    {% if d.formato == 'pdf' %}
+                    <a class="btn btn--contorno btn--sm" target="_blank" rel="noopener"
+                       href="{{ url_for('descargar_archivo', archivo_id=d.id, ver=1) }}">Ver</a>
+                    {% endif %}
+                    <a class="btn btn--sm" href="{{ url_for('descargar_archivo', archivo_id=d.id) }}">Descargar</a>
+                </div>
+            </article>
+            {% else %}
+            <div class="vacio">
+                <p><strong>No se encontraron documentos con esos criterios.</strong></p>
+                <a href="{{ url_for('buscar_documentos') }}">Quitar todos los filtros</a>
+            </div>
+            {% endfor %}
+        </div>
+
+        {{ m.paginacion(paginacion) }}
+    </section>
+</div>
+{% endblock %}

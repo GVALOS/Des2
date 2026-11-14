@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block titulo %}{{ empleado.nombre }}{% endblock %}
+
+{% block contenido %}
+<nav class="migas">
+    <a href="{{ url_for('listar_empleados') }}">Empleados</a> › <span>{{ empleado.nombre }}</span>
+</nav>
+
+<div class="ficha">
+    <div class="ficha__avatar item__avatar--{{ empleado.perfil }}">{{ empleado.nombre | iniciales }}</div>
+    <div class="ficha__datos">
+        <h1>{{ empleado.nombre }}</h1>
+        <p class="texto-suave">ID {{ empleado.id }} · DUI {{ empleado.dui }} · {{ PERFILES[empleado.perfil] }}
+            · Registrado el {{ empleado.fecha_registro | fecha }}</p>
+        {{ m.progreso(empleado.avance, empleado.completo) }}
+        <p class="item__avance">{{ empleado.validados }} de {{ empleado.total_requeridos }} requisitos validados ({{ empleado.avance }}%)</p>
+        <p><strong>Observaciones:</strong> {{ empleado.observaciones or 'Sin observaciones registradas.' }}</p>
+    </div>
+    <div class="ficha__acciones">
+        <a href="{{ url_for('listar_archivos_empleado', empleado_id=empleado.id) }}" class="btn">
+            {{ 'Gestionar documentos' if es_admin else 'Ver documentos' }}</a>
+        {% if es_admin %}
+        <a href="{{ url_for('editar_empleado', id=empleado.id) }}" class="btn btn--contorno">Editar datos</a>
+        {{ m.form_eliminar_empleado(empleado, "btn btn--peligro") }}
+        {% endif %}
+    </div>
+</div>
+
+<div class="tarjeta">
+    <h2>Requisitos del expediente</h2>
+    <div class="tabla-contenedor">
+        <table>
+            <thead>
+                <tr><th>Documento</th><th>Tipo</th><th>Estado</th><th>Versión</th><th>Vence</th><th>Observación</th></tr>
+            </thead>
+            <tbody>
+                {% for d in empleado.documentos if d.requerido or d.version %}
+                <tr>
+                    <td><strong>{{ d.nombre }}</strong></td>
+                    <td>{% if d.requerido %}Obligatorio{% else %}<span class="texto-suave">Opcional</span>{% endif %}</td>
+                    <td>{{ m.badge_documento(d.estado) }}
+                        {% if d.estado_archivo in ('vencido', 'por_vencer') %}{{ m.badge_archivo(d.estado_archivo) }}{% endif %}</td>
+                    <td>{{ 'v' ~ d.version if d.version else '—' }}</td>
+                    <td>{{ d.vencimiento | fecha }}</td>
+                    <td>{{ d.observacion or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

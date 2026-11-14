@@ -1,0 +1,77 @@
+{# Componentes reutilizables #}
+
+{% macro badge_documento(estado) -%}
+<span class="badge badge--{{ estado }}">{{ ESTADOS_DOCUMENTO.get(estado, estado) }}</span>
+{%- endmacro %}
+
+{% macro badge_archivo(estado) -%}
+{% if estado %}<span class="badge badge--{{ estado }}">{{ ESTADOS_ARCHIVO.get(estado, estado) }}</span>{% else %}<span class="texto-suave">—</span>{% endif %}
+{%- endmacro %}
+
+{% macro progreso(avance, completo=False) -%}
+<progress class="progreso{% if completo %} progreso--completo{% endif %}" value="{{ avance }}" max="100">{{ avance }}%</progress>
+{%- endmacro %}
+
+{% macro faceta_casillas(titulo, nombre, opciones, seleccion, formulario) -%}
+<fieldset class="faceta">
+    <legend>{{ titulo }}</legend>
+    {% for valor, etiqueta, conteo in opciones %}
+    <label class="faceta__opcion{% if conteo == 0 and valor not in seleccion %} faceta__opcion--vacia{% endif %}">
+        <input type="checkbox" name="{{ nombre }}" value="{{ valor }}" form="{{ formulario }}"
+               {% if valor in seleccion %}checked{% endif %} data-autoenvio>
+        <span class="faceta__texto">{{ etiqueta }}</span>
+        <span class="faceta__conteo">{{ conteo }}</span>
+    </label>
+    {% endfor %}
+</fieldset>
+{%- endmacro %}
+
+{% macro faceta_fechas(titulo, sel, formulario) -%}
+<fieldset class="faceta">
+    <legend>{{ titulo }}</legend>
+    <div class="faceta__fechas">
+        <label>Desde <input type="date" name="desde" value="{{ sel.desde }}" form="{{ formulario }}"></label>
+        <label>Hasta <input type="date" name="hasta" value="{{ sel.hasta }}" form="{{ formulario }}"></label>
+    </div>
+    <button type="submit" form="{{ formulario }}" class="btn btn--secundario btn--sm btn--bloque">Aplicar fechas</button>
+</fieldset>
+{%- endmacro %}
+
+{% macro chips_activos(chips, url_limpiar) -%}
+{% if chips %}
+<div class="chips">
+    {% for etiqueta, url in chips %}
+    <a class="chip" href="{{ url }}" title="Quitar filtro">{{ etiqueta }} <span aria-hidden="true">✕</span></a>
+    {% endfor %}
+    <a class="chips__limpiar" href="{{ url_limpiar }}">Limpiar todo</a>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro paginacion(p) -%}
+{% if p.paginas > 1 %}
+<nav class="paginacion" aria-label="Paginación">
+    {% if p.pagina > 1 %}<a href="{{ url_modificada(pagina=p.pagina - 1) }}">‹ Anterior</a>{% endif %}
+    {% for n in range(1, p.paginas + 1) %}
+        {% if n == p.pagina %}
+            <span class="paginacion__actual">{{ n }}</span>
+        {% elif n == 1 or n == p.paginas or (n - p.pagina)|abs <= 2 %}
+            <a href="{{ url_modificada(pagina=n) }}">{{ n }}</a>
+        {% elif (n - p.pagina)|abs == 3 %}
+            <span class="paginacion__puntos">…</span>
+        {% endif %}
+    {% endfor %}
+    {% if p.pagina < p.paginas %}<a href="{{ url_modificada(pagina=p.pagina + 1) }}">Siguiente ›</a>{% endif %}
+</nav>
+{% endif %}
+{%- endmacro %}
+
+{% macro form_eliminar_empleado(e, clase="btn btn--peligro btn--sm") -%}
+<form method="POST" action="{{ url_for('eliminar_empleado', id=e.id) }}" class="en-linea"
+      data-confirmar="Se eliminará a {{ e.nombre }} (DUI {{ e.dui }}) junto con TODOS sus documentos ({{ e.num_archivos }} archivo(s)). Esta acción no se puede deshacer."
+      data-titulo="¿Eliminar empleado?">
+    {{ campo_csrf() }}
+    <input type="hidden" name="confirmado" value="">
+    <button type="submit" class="{{ clase }}">Eliminar</button>
+</form>
+{%- endmacro %}
