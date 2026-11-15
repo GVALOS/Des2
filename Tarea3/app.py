@@ -37,7 +37,7 @@ DB_CONFIG = {
     "port": 3306,
     "user": "root",
     "password": "",
-    "database": "hospital",
+    "database": "hospital_tarea3",
 }
 
 
@@ -478,6 +478,81 @@ def login():
             return redirect(siguiente)
         error = "Usuario o contraseña incorrectos."
     return render_template("login.html", error=error), (401 if error else 200)
+
+
+@app.route("/registro", methods=["GET", "POST"])
+def registro():
+    if g.usuario:
+        return redirect(url_for("listar_empleados"))
+
+    errores = []
+    datos = {"nombre": "", "usuario": ""}
+
+    if request.method == "POST":
+        datos["nombre"] = request.form.get("nombre", "").strip()
+        datos["usuario"] = request.form.get("usuario", "").strip().lower()
+        clave = request.form.get("clave", "")
+        confirmar = request.form.get("confirmar_clave", "")
+
+        if not 3 <= len(datos["nombre"]) <= 100:
+            errores.append("El nombre debe tener entre 3 y 100 caracteres.")
+
+        if not re.fullmatch(r"[a-z0-9_]{3,50}", datos["usuario"]):
+            errores.append(
+                "El usuario debe tener entre 3 y 50 caracteres. "
+                "Solo se permiten letras, números y guion bajo."
+            )
+
+        if len(clave) < 12:
+            errores.append("La contraseña debe tener al menos 12 caracteres.")
+
+        if clave != confirmar:
+            errores.append("Las contraseñas no coinciden.")
+
+        if not errores:
+            existente = consultar(
+                "SELECT id FROM usuarios WHERE usuario = %s",
+                (datos["usuario"],),
+                uno=True
+            )
+
+            if existente:
+                errores.append("Ese nombre de usuario ya está registrado.")
+            else:
+                try:
+                    with cursor_bd() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO usuarios
+                                (usuario, nombre, password_hash, rol, activo)
+                            VALUES (%s, %s, %s, %s, %s)
+                            """,
+                            (
+                                datos["usuario"],
+                                datos["nombre"],
+                                generate_password_hash(
+                                    clave,
+                                    method=METODO_HASH
+                                ),
+                                "consulta",
+                                1
+                            )
+                        )
+
+                    flash(
+                        "Cuenta creada correctamente. Ya puedes iniciar sesión.",
+                        "exito"
+                    )
+                    return redirect(url_for("login"))
+
+                except mysql.connector.IntegrityError:
+                    errores.append("Ese nombre de usuario ya está registrado.")
+
+    return render_template(
+        "registro.html",
+        errores=errores,
+        datos=datos
+    )
 
 
 @app.route("/logout", methods=["POST"])
