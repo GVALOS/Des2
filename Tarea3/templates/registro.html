@@ -1,0 +1,118 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Registro - Hospital de Diagnóstico</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body class="pagina-login">
+
+    <main class="login">
+
+        <section class="login__tarjeta">
+
+<div class="registro__logo">
+    <img
+        src="{{ url_for('static', filename='gd_hospital_azul.svg') }}"
+        alt="Hospital de Diagnóstico"
+    >
+</div>
+
+
+       
+            <h2>Registro de usuarios</h2>
+
+            <p class="texto-suave">
+                Sistema de Expedientes Digitales
+            </p>
+
+            {% if errores %}
+                <div class="aviso aviso--error">
+                    <ul>
+                        {% for error in errores %}
+                            <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            <form method="POST"
+                  action="{{ url_for('registro') }}">
+
+                {{ campo_csrf() }}
+
+                <div class="campo">
+                    <label for="nombre">Nombre completo</label>
+                    <input
+                        type="text"
+                        id="nombre"
+                        name="nombre"
+                        maxlength="100"
+                        value="{{ datos.nombre }}"
+                        required>
+                </div>
+
+                <div class="campo">
+                    <label for="usuario">Nombre de usuario</label>
+                    <input
+                        type="text"
+                        id="usuario"
+                        name="usuario"
+                        maxlength="50"
+                        pattern="[a-z0-9_]{3,50}"
+                        value="{{ datos.usuario }}"
+                        required>
+                </div>
+
+                <div class="campo">
+                    <label for="clave">Contraseña</label>
+                    <input
+                        type="password"
+                        id="clave"
+                        name="clave"
+                        minlength="12"
+                        autocomplete="new-password"
+                        required>
+                </div>
+
+                <div class="campo">
+                    <label for="confirmar_clave">
+                        Confirmar contraseña
+                    </label>
+                    <input
+                        type="password"
+                        id="confirmar_clave"
+                        name="confirmar_clave"
+                        minlength="12"
+                        autocomplete="new-password"
+                        required>
+                </div>
+
+                <p class="texto-suave">
+                    La cuenta se creará con permisos de consulta.
+                </p>
+
+                <button type="submit" class="btn btn--bloque">
+                    Crear cuenta
+                </button>
+
+            </form>
+
+            <p style="margin-top:20px;">
+                ¿Ya tienes cuenta?
+                <a href="{{ url_for('login') }}">
+                    Iniciar sesión
+                </a>
+            </p>
+
+        </section>
+    </main>
+
+</body>
+</html>

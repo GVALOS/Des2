@@ -375,3 +375,25 @@ a.card:hover { text-decoration: none; border-color: var(--hd-acero-claro); }
     .navegacion.abierto { display: flex; }
     .menu { flex-direction: column; }
 }
+/* LOGO SOLO DEL REGISTRO */
+.registro__logo {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto 20px;
+}
+.registro__logo img {
+    display: block;
+    width: 100%;
+    max-width: 260px;
+    height: auto;
+    object-fit: contain;
+}
+.pagina-login .login__tarjeta:has(.registro__logo) {
+    width: min(480px, 100%);
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+
